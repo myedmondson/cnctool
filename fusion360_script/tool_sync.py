@@ -9,15 +9,19 @@ Can be run inside Autodesk Fusion 360 Scripts and Add-Ins, or run standalone via
     python tool_sync.py [--url http://localhost:3000] [--machine VF-2]
 """
 
+import os
 import sys
 import json
 import urllib.request
 import urllib.error
+import argparse
 
 # Configuration
-WEB_APP_ENDPOINT = "http://localhost:3000/api/fusion-tools"
-MACHINE_NAME = "Brother Speedio S700xd1"
-API_SECRET = "internal-api-key-for-fusion-script"
+# Can be overridden via environment variables or CLI arguments (--url)
+DEFAULT_HOST = os.environ.get("TOOL_APP_HOST", "http://localhost:3000").rstrip("/")
+WEB_APP_ENDPOINT = f"{DEFAULT_HOST}/api/fusion-tools"
+MACHINE_NAME = os.environ.get("TOOL_APP_MACHINE", "Brother Speedio S700xd1")
+API_SECRET = os.environ.get("TOOL_APP_SECRET", "internal-api-key-for-fusion-script")
 
 
 def get_tools_from_fusion():
@@ -101,19 +105,30 @@ def send_to_web_app(tools, machine_name=MACHINE_NAME, endpoint=WEB_APP_ENDPOINT,
         return False
 
 
-def run(context=None):
+def run(context=None, host=None, machine=None):
     """Entry point for Fusion 360 script engine."""
+    endpoint = f"{host.rstrip('/')}/api/fusion-tools" if host else WEB_APP_ENDPOINT
+    target_machine = machine if machine else MACHINE_NAME
+
+    print(f"Connecting to CNC Tool Manager at: {endpoint}")
+    print(f"Target machine: {target_machine}")
     print("Extracting CAM setup tools...")
+
     tools = get_tools_from_fusion()
     if tools:
         print(f"Found {len(tools)} cutting tools:")
         for t in tools:
             print(f"  - T{t['tnum']}: {t['description']}")
-        send_to_web_app(tools)
+        send_to_web_app(tools, machine_name=target_machine, endpoint=endpoint)
     else:
         print("No tools found to transmit.")
 
 
 if __name__ == '__main__':
-    run()
+    parser = argparse.ArgumentParser(description="Sync Fusion 360 CAM tools with CNC Tool Manager")
+    parser.add_argument("--url", default=None, help="Base URL of CNC Tool Manager (e.g. http://192.168.1.150:3000)")
+    parser.add_argument("--machine", default=None, help="Target machine name")
+    args, unknown = parser.parse_known_args()
+
+    run(host=args.url, machine=args.machine)
 
